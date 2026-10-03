@@ -1,0 +1,36 @@
+import net from "node:net";
+import { parseRequest } from "../http/parser.js";
+import { HTTPResponse } from "../http/response.js";
+import { serializeResponse } from "../http/serializer.js";
+
+const server = net.createServer((socket) => {
+    console.log("client connected");
+
+    socket.on("data", (data) => {
+        const rawRequest = data.toString();
+        const request = parseRequest(rawRequest);
+        console.log(request);
+
+        const response = new HTTPResponse(
+            200,
+            {
+                "Content-Type": "text/plain",
+                "Content-Length": Buffer.byteLength(body).toString(),
+            },
+            "Hello from our HTTP server!",
+        );
+
+        socket.write(serializeResponse(response));
+
+        socket.end();
+
+    });
+
+    socket.on("end", () => {
+        console.log("client disconnected");
+    });
+});
+
+server.listen(8080, () => {
+    console.log("TCP server listening on port 8080");
+});
