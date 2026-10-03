@@ -9,13 +9,21 @@ const server = net.createServer((socket) => {
 
     socket.on("data", (data) => {
         const rawRequest = data.toString();
-        const request = parseRequest(rawRequest);
-        console.log(request);
-
-        const response = handleRequest(request);
-        
-        socket.write(serializeResponse(response));
-
+        try {
+            const request = parseRequest(rawRequest);
+            console.log(request);
+            const response = handleRequest(request);
+            socket.write(serializeResponse(response));
+        } catch {
+            const response = new HTTPResponse(
+                400,
+                {
+                    "Content-Type": "text/plain",
+                },
+                "Bad Request",
+            );
+            socket.write(serializeResponse(response));
+        }
         socket.end();
     });
 

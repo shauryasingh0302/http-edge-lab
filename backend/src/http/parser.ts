@@ -7,6 +7,10 @@ export function parseRequest(rawRequest: string) {
 
     const [method, path, version] = lines[0].split(" ");
 
+    if(!method || !path || !version){
+        throw new Error("Malformed request line")
+    }
+
     const headers: Record<string, string> = {};
 
     const url = new URL(path, "http://localhost");

@@ -92,6 +92,19 @@ router.post("/users", (request) => {
     );
 });
 
+router.post("/users/create", () => {
+    const body = "User created";
+
+    return new HTTPResponse(
+        201,
+        {
+            "Content-Type": "text/plain",
+            "Content-Length": Buffer.byteLength(body).toString(),
+        },
+        body,
+    );
+});
+
 export function handleRequest(request: HTTPRequest): HTTPResponse {
     return router.handle(request);
 }
