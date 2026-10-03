@@ -3,16 +3,22 @@ export class HTTPRequest {
     path: string;
     version: string;
     headers: Record<string, string>;
+    body: string;
+    query: Record<string, string>;
 
     constructor(
         method: string,
         path: string,
         version: string,
-        headers: Record<string, string>
+        headers: Record<string, string>,
+        body: string,
+        query: Record<string, string>,
     ){
         this.method = method;
         this.path = path;
         this.version = version;
         this.headers = headers;
+        this.body = body;
+        this.query = query;
     }
 }

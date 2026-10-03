@@ -3,11 +3,26 @@ import { HTTPResponse } from "../http/response.js";
 
 type Handler = (request: HTTPRequest) => HTTPResponse;
 
+export type Middleware = (
+    request: HTTPRequest,
+    next: () => HTTPResponse,
+) => HTTPResponse;
+
 export class Router {
     private routes: Map<string, Handler> = new Map();
 
+    private middlewares: Middleware[] = [];
+
+    use(middleware: Middleware) {
+        this.middlewares.push(middleware);
+    }
+
     get(path: string, handler: Handler) {
         this.routes.set(`GET ${path}`, handler);
+    }
+
+    post(path: string, handler: Handler) {
+        this.routes.set(`POST ${path}`, handler);
     }
 
     handle(request: HTTPRequest): HTTPResponse {
@@ -21,10 +36,20 @@ export class Router {
                 {
                     "Content-Type": "text/plain",
                 },
-                "Not Found"
+                "Not Found",
             );
         }
 
-        return handler(request);
+        let index = 0;
+
+        const next = (): HTTPResponse => {
+            const middleware = this.middlewares[index++];
+            if(!middleware) {
+                return handler(request);
+            }
+            return middleware(request, next);
+        };
+
+        return next();
     }
 }
