@@ -2,6 +2,7 @@ import net from "node:net";
 import { parseRequest } from "../http/parser.js";
 import { HTTPResponse } from "../http/response.js";
 import { serializeResponse } from "../http/serializer.js";
+import { handleRequest } from "./request-handler.js";
 
 const server = net.createServer((socket) => {
     console.log("client connected");
@@ -11,19 +12,11 @@ const server = net.createServer((socket) => {
         const request = parseRequest(rawRequest);
         console.log(request);
 
-        const response = new HTTPResponse(
-            200,
-            {
-                "Content-Type": "text/plain",
-                "Content-Length": Buffer.byteLength(body).toString(),
-            },
-            "Hello from our HTTP server!",
-        );
-
+        const response = handleRequest(request);
+        
         socket.write(serializeResponse(response));
 
         socket.end();
-
     });
 
     socket.on("end", () => {
