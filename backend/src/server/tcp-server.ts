@@ -6,6 +6,7 @@ import { handleRequest } from "./request-handler.js";
 
 const server = net.createServer((socket) => {
     console.log("client connected");
+    socket.setTimeout(30_000);
 
     let buffer = "";
 
@@ -29,7 +30,7 @@ const server = net.createServer((socket) => {
 
             const requestLength = headerEnd + 4 + contentLength;
 
-            if(buffer.length<requestLength){
+            if (buffer.length < requestLength) {
                 break;
             }
 
@@ -39,9 +40,18 @@ const server = net.createServer((socket) => {
 
             try {
                 const request = parseRequest(rawRequest);
+                const shouldClose =
+                    request.headers["connection"]?.toLowerCase() === "close";
                 console.log(request);
                 const response = handleRequest(request);
+                response.headers["Connection"] = shouldClose
+                    ? "close"
+                    : "keep-alive";
                 socket.write(serializeResponse(response));
+                if (shouldClose) {
+                    socket.end();
+                    break;
+                }
             } catch {
                 const response = new HTTPResponse(
                     400,
@@ -55,6 +65,15 @@ const server = net.createServer((socket) => {
         }
     });
 
+    socket.on("close", () => {
+        console.log("TCP connection closed");
+    });
+
+    socket.on("timeout", () => {
+        console.log("socket timeout");
+        socket.end();
+    });
+
     socket.on("end", () => {
         console.log("client disconnected");
     });
@@ -62,4 +81,19 @@ const server = net.createServer((socket) => {
 
 server.listen(8080, () => {
     console.log("TCP server listening on port 8080");
+});
+
+process.on("SIGINT", ()=>{
+    console.log("Shutting down server...");
+    
+    const forceShutdown = setTimeout(()=>{
+        console.log("Forcefully shutting down...");
+        process.exit(0);
+    },5000);
+
+    server.close(()=>{
+        clearTimeout(forceShutdown);
+        console.log("Server closed");
+        process.exit(0);
+    });
 });
