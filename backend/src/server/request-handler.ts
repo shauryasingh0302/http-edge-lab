@@ -1,7 +1,11 @@
 import { HTTPRequest } from "../http/request.js";
 import { HTTPResponse } from "../http/response.js";
+import { Router } from "../router/router.js";
 
-export function handleRequest(request: HTTPRequest): HTTPResponse {
+const router = new Router();
+
+router.get("/", () => {
+
     const body = "Hello from our HTTP server!";
 
     return new HTTPResponse(
@@ -10,6 +14,11 @@ export function handleRequest(request: HTTPRequest): HTTPResponse {
             "Content-Type": "text/plain",
             "Content-Length": Buffer.byteLength(body).toString(),
         },
-        body
+        body,
     );
+
+});
+
+export function handleRequest(request: HTTPRequest): HTTPResponse {
+    return router.handle(request);
 }
