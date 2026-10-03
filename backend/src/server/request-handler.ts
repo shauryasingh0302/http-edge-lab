@@ -24,6 +24,21 @@ const timer: Middleware = (request, next) => {
 
 router.use(timer);
 
+router.get("/cookie", (request) => {
+    const sessionId = request.cookies.sessionId;
+
+    const body = `Session: ${sessionId}`;
+
+    return new HTTPResponse(
+        200,
+        {
+            "Content-Type": "text/plain",
+            "Content-Length": Buffer.byteLength(body).toString(),
+        },
+        body,
+    );
+});
+
 router.get("/", () => {
     const body = "Hello from our HTTP server!";
 
@@ -32,6 +47,7 @@ router.get("/", () => {
         {
             "Content-Type": "text/plain",
             "Content-Length": Buffer.byteLength(body).toString(),
+            "Set-Cookie": ["sessionId=abc123", "theme=dark"],
         },
         body,
     );

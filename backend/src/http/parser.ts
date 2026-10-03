@@ -1,7 +1,7 @@
 import { HTTPRequest } from "./request";
 
 export function parseRequest(rawRequest: string) {
-    const [head, body=""] = rawRequest.split("\r\n\r\n");
+    const [head, body = ""] = rawRequest.split("\r\n\r\n");
 
     const lines = head.split("\r\n");
 
@@ -12,10 +12,9 @@ export function parseRequest(rawRequest: string) {
     const url = new URL(path, "http://localhost");
     const query: Record<string, string> = {};
 
-    for(const [key,value] of url.searchParams){
+    for (const [key, value] of url.searchParams) {
         query[key] = value;
     }
-
 
     for (let i = 1; i < lines.length; i++) {
         const [key, ...value] = lines[i].split(":");
@@ -23,6 +22,25 @@ export function parseRequest(rawRequest: string) {
         headers[key.toLowerCase()] = value.join(":").trim();
     }
 
-    return new HTTPRequest(method, url.pathname, version, headers, body, query);
-    
+    const cookies: Record<string, string> = {};
+
+    const cookieHeader = headers["cookie"];
+
+    if (cookieHeader) {
+        for (const cookie of cookieHeader.split(";")) {
+            const [key, ...value] = cookie.trim().split("=");
+
+            cookies[key] = value.join("=");
+        }
+    }
+
+    return new HTTPRequest(
+        method,
+        url.pathname,
+        version,
+        headers,
+        body,
+        query,
+        cookies,
+    );
 }
