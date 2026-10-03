@@ -105,6 +105,23 @@ router.post("/users/create", () => {
     );
 });
 
+router.get("/chunked", () => {
+    return new HTTPResponse(
+        200,
+        {
+            "Content-Type": "text/plain",
+        },
+        "",
+        true,
+        [
+            "Hello",
+            " from",
+            " chunked",
+            " streaming!",
+        ],
+    );
+});
+
 export function handleRequest(request: HTTPRequest): HTTPResponse {
     return router.handle(request);
 }

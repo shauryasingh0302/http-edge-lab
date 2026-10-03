@@ -1,7 +1,7 @@
 import net from "node:net";
 import { parseRequest } from "../http/parser.js";
 import { HTTPResponse } from "../http/response.js";
-import { serializeResponse } from "../http/serializer.js";
+import { serializeResponse, writeChunkedResponse } from "../http/serializer.js";
 import { handleRequest } from "./request-handler.js";
 
 const server = net.createServer((socket) => {
@@ -10,7 +10,7 @@ const server = net.createServer((socket) => {
 
     let buffer = "";
 
-    socket.on("data", (data) => {
+    socket.on("data", async (data) => {
         buffer += data.toString();
 
         while (true) {
@@ -47,7 +47,11 @@ const server = net.createServer((socket) => {
                 response.headers["Connection"] = shouldClose
                     ? "close"
                     : "keep-alive";
-                socket.write(serializeResponse(response));
+                if (response.chunked) {
+                    await writeChunkedResponse(socket, response);
+                } else {
+                    socket.write(serializeResponse(response));
+                }
                 if (shouldClose) {
                     socket.end();
                     break;
@@ -83,15 +87,15 @@ server.listen(8080, () => {
     console.log("TCP server listening on port 8080");
 });
 
-process.on("SIGINT", ()=>{
+process.on("SIGINT", () => {
     console.log("Shutting down server...");
-    
-    const forceShutdown = setTimeout(()=>{
+
+    const forceShutdown = setTimeout(() => {
         console.log("Forcefully shutting down...");
         process.exit(0);
-    },5000);
+    }, 5000);
 
-    server.close(()=>{
+    server.close(() => {
         clearTimeout(forceShutdown);
         console.log("Server closed");
         process.exit(0);
