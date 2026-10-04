@@ -1,7 +1,11 @@
 import net from "node:net";
 import { parseRequest } from "../http/parser.js";
 import { HTTPResponse } from "../http/response.js";
-import { serializeResponse, writeChunkedResponse } from "../http/serializer.js";
+import {
+    serializeResponse,
+    writeChunkedResponse,
+    writeStreamResponse,
+} from "../http/serializer.js";
 import { handleRequest } from "./request-handler.js";
 
 const server = net.createServer((socket) => {
@@ -9,6 +13,42 @@ const server = net.createServer((socket) => {
     socket.setTimeout(30_000);
 
     let buffer = "";
+
+    let requestQueue = Promise.resolve();
+
+    const processRequest = async (rawRequest: string) => {
+        try {
+            const request = parseRequest(rawRequest);
+            const shouldClose =
+                request.headers["connection"]?.toLowerCase() === "close";
+            console.log(request);
+            const response = handleRequest(request);
+            response.headers["Connection"] = shouldClose
+                ? "close"
+                : "keep-alive";
+
+            if (response.stream) {
+                await writeStreamResponse(socket, response);
+            } else if (response.chunked) {
+                await writeChunkedResponse(socket, response);
+            } else {
+                socket.write(serializeResponse(response));
+            }
+
+            if (shouldClose) {
+                socket.end();
+            }
+        } catch {
+            const response = new HTTPResponse(
+                400,
+                {
+                    "Content-Type": "text/plain",
+                },
+                "Bad Request",
+            );
+            socket.write(serializeResponse(response));
+        }
+    };
 
     socket.on("data", async (data) => {
         buffer += data.toString();
@@ -38,34 +78,7 @@ const server = net.createServer((socket) => {
 
             buffer = buffer.slice(requestLength);
 
-            try {
-                const request = parseRequest(rawRequest);
-                const shouldClose =
-                    request.headers["connection"]?.toLowerCase() === "close";
-                console.log(request);
-                const response = handleRequest(request);
-                response.headers["Connection"] = shouldClose
-                    ? "close"
-                    : "keep-alive";
-                if (response.chunked) {
-                    await writeChunkedResponse(socket, response);
-                } else {
-                    socket.write(serializeResponse(response));
-                }
-                if (shouldClose) {
-                    socket.end();
-                    break;
-                }
-            } catch {
-                const response = new HTTPResponse(
-                    400,
-                    {
-                        "Content-Type": "text/plain",
-                    },
-                    "Bad Request",
-                );
-                socket.write(serializeResponse(response));
-            }
+            requestQueue = requestQueue.then(() => processRequest(rawRequest));
         }
     });
 

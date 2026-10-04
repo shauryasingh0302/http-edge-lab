@@ -26,7 +26,7 @@ export function serializeResponse(response: HTTPResponse): string {
     responseText += "\r\n";
 
     if (response.chunked) {
-        const chunks = response.chunks ?? [response.body];
+        const chunks = response.chunks ?? [response.body ?? ""];
         for (const chunk of chunks) {
             responseText += encodeChunk(chunk);
         }
@@ -64,7 +64,7 @@ export async function writeChunkedResponse(
 
     socket.write(headers);
 
-    const chunks = response.chunks ?? [response.body];
+    const chunks = response.chunks ?? [response.body ?? ""];
 
     for (const chunk of chunks) {
         socket.write(encodeChunk(chunk));
@@ -72,4 +72,34 @@ export async function writeChunkedResponse(
     }
 
     socket.write("0\r\n\r\n");
+}
+
+export async function writeStreamResponse(
+    socket: Socket,
+    response: HTTPResponse,
+) {
+    const statusMessage = STATUS_CODES[response.statusCode] ?? "Unknown";
+
+    let headers = `HTTP/1.1 ${response.statusCode} ${statusMessage}\r\n`;
+
+    for (const [key, value] of Object.entries(response.headers)) {
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                headers += `${key}: ${item}\r\n`;
+            }
+        } else {
+            headers += `${key}: ${value}\r\n`;
+        }
+    }
+    headers += "\r\n";
+    socket.write(headers);
+
+    for await (const chunk of response.stream!) {
+        const canContinue = socket.write(chunk);
+        if (!canContinue) {
+            await new Promise<void>((resolve) => {
+                socket.once("drain", resolve);
+            });
+        }
+    }
 }

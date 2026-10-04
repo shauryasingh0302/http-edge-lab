@@ -2,6 +2,8 @@ import { HTTPRequest } from "../http/request.js";
 import { HTTPResponse } from "../http/response.js";
 import { Router } from "../router/router.js";
 import { Middleware } from "../router/router.js";
+import { createReadStream, statSync } from "node:fs";
+import path from "node:path";
 
 const router = new Router();
 
@@ -113,12 +115,52 @@ router.get("/chunked", () => {
         },
         "",
         true,
-        [
-            "Hello",
-            " from",
-            " chunked",
-            " streaming!",
-        ],
+        ["Hello", " from", " chunked", " streaming!"],
+    );
+});
+
+router.get("/static/:filename", (request) => {
+    const publicDir = path.resolve("public");
+    const filename = decodeURIComponent(request.params.filename);
+    const filePath = path.resolve(publicDir, filename);
+    const relativePath = path.relative(publicDir, filePath);
+
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+        return new HTTPResponse(
+            403,
+            {
+                "Content-Type": "text/plain",
+            },
+            "Forbidden",
+        );
+    }
+
+    let fileSize: number;
+
+    try {
+        fileSize = statSync(filePath).size;
+    } catch {
+        return new HTTPResponse(
+            404,
+            {
+                "Content-Type": "text/plain",
+            },
+            "Not Found",
+        );
+    }
+    
+    const stream = createReadStream(filePath);
+
+    return new HTTPResponse(
+        200,
+        {
+            "Content-Type": "text/plain",
+            "Content-Length": fileSize.toString(),
+        },
+        undefined,
+        false,
+        undefined,
+        stream,
     );
 });
 

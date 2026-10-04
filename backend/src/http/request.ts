@@ -5,6 +5,7 @@ export class HTTPRequest {
     headers: Record<string, string>;
     body: string;
     query: Record<string, string>;
+    params: Record<string, string>;
     cookies: Record<string, string>;
 
     constructor(
@@ -14,6 +15,7 @@ export class HTTPRequest {
         headers: Record<string, string>,
         body: string,
         query: Record<string, string>,
+        params: Record<string, string>,
         cookies: Record<string, string>,
     ){
         this.method = method;
@@ -22,6 +24,7 @@ export class HTTPRequest {
         this.headers = headers;
         this.body = body;
         this.query = query;
+        this.params=params;
         this.cookies = cookies;
     }
 }

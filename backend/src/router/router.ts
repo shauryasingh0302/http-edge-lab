@@ -25,10 +25,56 @@ export class Router {
         this.routes.set(`POST ${path}`, handler);
     }
 
-    handle(request: HTTPRequest): HTTPResponse {
-        const key = `${request.method} ${request.path}`;
+    private matchRoute(
+        routePath: string,
+        requestPath: string,
+    ): Record<string, string> | null {
+        const routeParts = routePath.split("/").filter(Boolean);
+        const requestParts = requestPath.split("/").filter(Boolean);
 
-        const handler = this.routes.get(key);
+        if (routeParts.length !== requestParts.length) {
+            return null;
+        }
+
+        const params: Record<string, string> = {};
+
+        for (let i = 0; i < routeParts.length; i++) {
+            const routePart = routeParts[i];
+            const requestPart = requestParts[i];
+
+            if (routePart.startsWith(":")) {
+                const paramName = routePart.slice(1);
+                params[paramName] = requestPart;
+            } else if (routePart !== requestPart) {
+                return null;
+            }
+        }
+
+        return params;
+    }
+
+    handle(request: HTTPRequest): HTTPResponse {
+        // const key = `${request.method} ${request.path}`;
+
+        // const handler = this.routes.get(key);
+
+        let handler: Handler | undefined;
+
+        for (const [key, routeHandler] of this.routes) {
+            const [method, routePath] = key.split(" ");
+
+            if (method !== request.method) {
+                continue;
+            }
+
+            const params = this.matchRoute(routePath, request.path);
+
+            if (params !== null) {
+                request.params = params;
+                handler = routeHandler;
+                break;
+            }
+        }
 
         if (!handler) {
             return new HTTPResponse(
@@ -44,7 +90,7 @@ export class Router {
 
         const next = (): HTTPResponse => {
             const middleware = this.middlewares[index++];
-            if(!middleware) {
+            if (!middleware) {
                 return handler(request);
             }
             return middleware(request, next);

@@ -7,12 +7,12 @@ export function parseRequest(rawRequest: string) {
 
     const [method, path, version] = lines[0].split(" ");
 
-    if(!method || !path || !version){
-        throw new Error("Malformed request line")
+    if (!method || !path || !version) {
+        throw new Error("Malformed request line");
     }
 
     const headers: Record<string, string> = {};
-
+    const [rawPathname] = path.split("?");
     const url = new URL(path, "http://localhost");
     const query: Record<string, string> = {};
 
@@ -40,11 +40,12 @@ export function parseRequest(rawRequest: string) {
 
     return new HTTPRequest(
         method,
-        url.pathname,
+        rawPathname,
         version,
         headers,
         body,
         query,
+        {},
         cookies,
     );
 }
