@@ -5,6 +5,17 @@ import { Middleware } from "../router/router.js";
 import { createReadStream, statSync } from "node:fs";
 import path from "node:path";
 
+const mimeTypes: Record<string, string> = {
+    ".html": "text/html",
+    ".css": "text/css",
+    ".js": "text/javascript",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".txt": "text/plain",
+};
+
 const router = new Router();
 
 const logger: Middleware = (request, next) => {
@@ -135,6 +146,9 @@ router.get("/static/:filename", (request) => {
         );
     }
 
+    const extension = path.extname(filePath).toLowerCase();
+    const contentType = mimeTypes[extension] ?? "application/octet-stream";
+
     let fileSize: number;
 
     try {
@@ -148,14 +162,75 @@ router.get("/static/:filename", (request) => {
             "Not Found",
         );
     }
-    
-    const stream = createReadStream(filePath);
+
+    const range = request.headers["range"];
+    let start = 0;
+    let end = fileSize - 1;
+
+    if (range) {
+        const match = range.match(/^bytes=(\d*)-(\d*)$/);
+
+        if (!match || (!match[1] && !match[2])) {
+            return new HTTPResponse(
+                416,
+                {
+                    "Content-Type": "text/plain",
+                    "Content-Range": `bytes */${fileSize}`,
+                },
+                "Range Not Satisfiable",
+            );
+        }
+
+        if (!match[1]) {
+            const suffixLength = Number(match[2]);
+
+            if (suffixLength === 0) {
+                return new HTTPResponse(
+                    416,
+                    {
+                        "Content-Type": "text/plain",
+                        "Content-Range": `bytes */${fileSize}`,
+                    },
+                    "Range Not Satisfiable",
+                );
+            }
+
+            start = Math.max(fileSize - suffixLength, 0);
+            end = fileSize - 1;
+        } else {
+            start = Number(match[1]);
+
+            if (match[2]) {
+                end = Number(match[2]);
+            } else {
+                end = fileSize - 1;
+            }
+        }
+
+        if (start >= fileSize || start > end) {
+            return new HTTPResponse(
+                416,
+                {
+                    "Content-Type": "text/plain",
+                    "Content-Range": `bytes */${fileSize}`,
+                },
+                "Range Not Satisfiable",
+            );
+        }
+
+        end = Math.min(end, fileSize - 1);
+    }
+
+    const stream = createReadStream(filePath, { start, end });
 
     return new HTTPResponse(
-        200,
+        range ? 206 : 200,
         {
-            "Content-Type": "text/plain",
-            "Content-Length": fileSize.toString(),
+            "Content-Type": contentType,
+            "Content-Length": (end - start + 1).toString(),
+            ...(range
+                ? { "Content-Range": `bytes ${start}-${end}/${fileSize}` }
+                : {}),
         },
         undefined,
         false,
