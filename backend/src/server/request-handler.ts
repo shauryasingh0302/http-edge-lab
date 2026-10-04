@@ -130,6 +130,8 @@ router.get("/chunked", () => {
     );
 });
 
+import { createGzip } from "node:zlib";
+
 router.get("/static/:filename", (request) => {
     const publicDir = path.resolve("public");
     const filename = decodeURIComponent(request.params.filename);
@@ -148,11 +150,45 @@ router.get("/static/:filename", (request) => {
 
     const extension = path.extname(filePath).toLowerCase();
     const contentType = mimeTypes[extension] ?? "application/octet-stream";
+    const acceptEncoding = request.headers["accept-encoding"];
+
+    const supportsGzip =
+        acceptEncoding
+            ?.split(",")
+            .some((encoding) => encoding.trim().split(";")[0] === "gzip") ??
+        false;
+
+    const shouldGzip =
+        supportsGzip &&
+        request.method === "GET" &&
+        !range &&
+        contentType.startsWith("text/");
 
     let fileSize: number;
+    let etag;
+    let lastModified;
 
     try {
-        fileSize = statSync(filePath).size;
+        const fileStats = statSync(filePath);
+        fileSize = fileStats.size;
+        etag = `"${fileStats.size}-${fileStats.mtimeMs}"`;
+        lastModified = fileStats.mtime.toUTCString();
+        const ifNoneMatch = request.headers["if-none-match"];
+
+        const ifModifiedSince = request.headers["if-modified-since"];
+
+        if (ifModifiedSince === lastModified) {
+            return new HTTPResponse(304, {
+                ETag: etag,
+                "Last-Modified": lastModified,
+            });
+        }
+
+        if (ifNoneMatch === etag) {
+            return new HTTPResponse(304, {
+                ETag: etag,
+            });
+        }
     } catch {
         return new HTTPResponse(
             404,
@@ -221,13 +257,34 @@ router.get("/static/:filename", (request) => {
         end = Math.min(end, fileSize - 1);
     }
 
-    const stream = createReadStream(filePath, { start, end });
+    const fileStream = createReadStream(filePath, { start, end });
+
+    const fileStream = createReadStream(filePath, { start, end });
+
+    const stream =
+        request.method === "HEAD"
+            ? undefined
+            : shouldGzip
+              ? fileStream.pipe(createGzip())
+              : fileStream;
 
     return new HTTPResponse(
         range ? 206 : 200,
         {
             "Content-Type": contentType,
-            "Content-Length": (end - start + 1).toString(),
+            ...(shouldGzip
+                ? {}
+                : {
+                      "Content-Length": (end - start + 1).toString(),
+                  }),
+            "ETag": etag,
+            "Last-Modified": lastModified,
+            ...(shouldGzip
+                ? {
+                      "Content-Encoding": "gzip",
+                      "Transfer-Encoding": "chunked",
+                  }
+                : {}),
             ...(range
                 ? { "Content-Range": `bytes ${start}-${end}/${fileSize}` }
                 : {}),

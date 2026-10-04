@@ -19,6 +19,7 @@ export class Router {
 
     get(path: string, handler: Handler) {
         this.routes.set(`GET ${path}`, handler);
+        this.routes.set(`HEAD ${path}`, handler);
     }
 
     post(path: string, handler: Handler) {
@@ -54,9 +55,6 @@ export class Router {
     }
 
     handle(request: HTTPRequest): HTTPResponse {
-        // const key = `${request.method} ${request.path}`;
-
-        // const handler = this.routes.get(key);
 
         let handler: Handler | undefined;
 
