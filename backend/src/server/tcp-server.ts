@@ -5,6 +5,7 @@ import {
     serializeResponse,
     writeChunkedResponse,
     writeStreamResponse,
+    writeGzipResponse,
 } from "../http/serializer.js";
 import { handleRequest } from "./request-handler.js";
 
@@ -27,7 +28,9 @@ const server = net.createServer((socket) => {
                 ? "close"
                 : "keep-alive";
 
-            if (response.stream) {
+            if (response.headers["Content-Encoding"] === "gzip") {
+                await writeGzipResponse(socket, response);
+            } else if (response.stream) {
                 await writeStreamResponse(socket, response);
             } else if (response.chunked) {
                 await writeChunkedResponse(socket, response);

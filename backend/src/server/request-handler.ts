@@ -4,6 +4,7 @@ import { Router } from "../router/router.js";
 import { Middleware } from "../router/router.js";
 import { createReadStream, statSync } from "node:fs";
 import path from "node:path";
+import { createGzip } from "node:zlib";
 
 const mimeTypes: Record<string, string> = {
     ".html": "text/html",
@@ -130,8 +131,6 @@ router.get("/chunked", () => {
     );
 });
 
-import { createGzip } from "node:zlib";
-
 router.get("/static/:filename", (request) => {
     const publicDir = path.resolve("public");
     const filename = decodeURIComponent(request.params.filename);
@@ -152,11 +151,19 @@ router.get("/static/:filename", (request) => {
     const contentType = mimeTypes[extension] ?? "application/octet-stream";
     const acceptEncoding = request.headers["accept-encoding"];
 
+    const range = request.headers["range"];
+
     const supportsGzip =
-        acceptEncoding
-            ?.split(",")
-            .some((encoding) => encoding.trim().split(";")[0] === "gzip") ??
-        false;
+        acceptEncoding?.split(",").some((encoding) => {
+            const parts = encoding.trim().split(";");
+            const name = parts[0];
+
+            const q = parts.find((part) => part.trim().startsWith("q="));
+
+            const quality = q ? Number(q.split("=")[1]) : 1;
+
+            return name === "gzip" && quality > 0;
+        }) ?? false;
 
     const shouldGzip =
         supportsGzip &&
@@ -199,7 +206,6 @@ router.get("/static/:filename", (request) => {
         );
     }
 
-    const range = request.headers["range"];
     let start = 0;
     let end = fileSize - 1;
 
@@ -259,8 +265,6 @@ router.get("/static/:filename", (request) => {
 
     const fileStream = createReadStream(filePath, { start, end });
 
-    const fileStream = createReadStream(filePath, { start, end });
-
     const stream =
         request.method === "HEAD"
             ? undefined
@@ -277,12 +281,13 @@ router.get("/static/:filename", (request) => {
                 : {
                       "Content-Length": (end - start + 1).toString(),
                   }),
-            "ETag": etag,
+            ETag: etag,
             "Last-Modified": lastModified,
             ...(shouldGzip
                 ? {
                       "Content-Encoding": "gzip",
                       "Transfer-Encoding": "chunked",
+                      Vary: "Accept-Encoding",
                   }
                 : {}),
             ...(range

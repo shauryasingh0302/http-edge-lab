@@ -103,3 +103,45 @@ export async function writeStreamResponse(
         }
     }
 }
+
+export async function writeGzipResponse(
+    socket: Socket,
+    response: HTTPResponse,
+) {
+    const statusMessage = STATUS_CODES[response.statusCode] ?? "Unknown";
+
+    let headers = `HTTP/1.1 ${response.statusCode} ${statusMessage}\r\n`;
+
+    for (const [key, value] of Object.entries(response.headers)) {
+        if (
+            key.toLowerCase() === "content-length" ||
+            key.toLowerCase() === "transfer-encoding"
+        ) {
+            continue;
+        }
+
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                headers += `${key}: ${item}\r\n`;
+            }
+        } else {
+            headers += `${key}: ${value}\r\n`;
+        }
+    }
+
+    headers += "Transfer-Encoding: chunked\r\n";
+    headers += "\r\n";
+
+    socket.write(headers);
+
+    for await (const chunk of response.stream!) {
+        const size = Buffer.byteLength(chunk).toString(16);
+        const chunkHeader = `${size}\r\n`;
+        const chunkFooter = "\r\n";
+
+        socket.write(chunkHeader);
+        socket.write(chunk);
+        socket.write(chunkFooter);
+    }
+    socket.write("0\r\n\r\n");
+}
