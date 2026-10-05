@@ -5,6 +5,8 @@ node_modules/
 
 # Package manager caches and debug logs
 .npm/
+cert/
+backend/certs/
 .yarn/*
 !.yarn/patches
 !.yarn/plugins

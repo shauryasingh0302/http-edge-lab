@@ -1,4 +1,6 @@
 import net from "node:net";
+import tls from "node:tls";
+import { readFileSync } from "node:fs";
 import { parseRequest } from "../http/parser.js";
 import { HTTPResponse } from "../http/response.js";
 import {
@@ -9,7 +11,12 @@ import {
 } from "../http/serializer.js";
 import { handleRequest } from "./request-handler.js";
 
-const server = net.createServer((socket) => {
+const tlsOptions = {
+    key: readFileSync("certs/key.pem"),
+    cert: readFileSync("certs/cert.pem"),
+};
+
+const handleConnection = (socket: net.Socket) => {
     console.log("client connected");
     socket.setTimeout(30_000);
 
@@ -97,10 +104,18 @@ const server = net.createServer((socket) => {
     socket.on("end", () => {
         console.log("client disconnected");
     });
-});
+};
+
+const server = net.createServer(handleConnection);
+
+const httpsServer = tls.createServer(tlsOptions, handleConnection);
 
 server.listen(8080, () => {
     console.log("TCP server listening on port 8080");
+});
+
+httpsServer.listen(8443, () => {
+    console.log("HTTPS server listening on port 8443");
 });
 
 process.on("SIGINT", () => {

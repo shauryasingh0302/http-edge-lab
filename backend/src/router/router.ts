@@ -26,6 +26,18 @@ export class Router {
         this.routes.set(`POST ${path}`, handler);
     }
 
+    put(path: string, handler: Handler) {
+        this.routes.set(`PUT ${path}`, handler);
+    }
+
+    patch(path: string, handler: Handler) {
+        this.routes.set(`PATCH ${path}`, handler);
+    }
+
+    delete(path: string, handler: Handler) {
+        this.routes.set(`DELETE ${path}`, handler);
+    }
+
     options(path: string, handler: Handler) {
         this.routes.set(`OPTIONS ${path}`, handler);
     }
@@ -77,7 +89,31 @@ export class Router {
             }
         }
 
+        const pathExists = [...this.routes.keys()].some((key) => {
+            const routePath = key.split(" ")[1];
+
+            return this.matchRoute(routePath, request.path) !== null;
+        });
+
+        if (request.method === "OPTIONS" && pathExists) {
+            handler = () =>
+                new HTTPResponse(204, {
+                    Allow: this.getAllowedMethods(request.path).join(", "),
+                });
+        }
+
         if (!handler) {
+            if (pathExists) {
+                return new HTTPResponse(
+                    405,
+                    {
+                        "Content-Type": "text/plain",
+                        Allow: this.getAllowedMethods(request.path).join(", "),
+                    },
+                    "Method Not Allowed",
+                );
+            }
+
             return new HTTPResponse(
                 404,
                 {
@@ -106,12 +142,15 @@ export class Router {
         for (const key of this.routes.keys()) {
             const [method, routePath] = key.split(" ");
 
-            if (routePath === path) {
+            if (this.matchRoute(routePath, path) !== null) {
                 methods.push(method);
             }
         }
 
+        if (!methods.includes("OPTIONS")) {
+            methods.push("OPTIONS");
+        }
+
         return methods;
     }
-    
 }

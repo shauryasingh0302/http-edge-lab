@@ -21,6 +21,7 @@ const router = new Router();
 
 const logger: Middleware = (request, next) => {
     console.log(`${request.method} ${request.path}`);
+    console.log("Origin:", request.headers["origin"]);
     return next();
 };
 
@@ -37,6 +38,51 @@ const timer: Middleware = (request, next) => {
 };
 
 router.use(timer);
+
+const cors: Middleware = (request, next) => {
+    const response = next();
+
+    const allowedOrigins = ["http://localhost:3000"];
+
+    const origin = request.headers["origin"];
+
+    const requestedMethod = request.headers["access-control-request-method"];
+
+    const allowedHeaders = ["content-type", "authorization"];
+
+    const requestedHeaders =
+        request.headers["access-control-request-headers"]
+            ?.split(",")
+            .map((header) => header.trim().toLowerCase()) ?? [];
+
+    const headersAllowed = requestedHeaders.every((header) =>
+        allowedHeaders.includes(header),
+    );
+
+    if (requestedHeaders.length > 0 && headersAllowed) {
+        response.headers["Access-Control-Allow-Headers"] =
+            requestedHeaders.join(", ");
+    }
+
+    if (origin && allowedOrigins.includes(origin)) {
+        response.headers["Access-Control-Allow-Origin"] = origin;
+        response.headers["Access-Control-Allow-Credentials"] = "true";
+        response.headers["Vary"] = "Origin";
+        
+        if (requestedMethod) {
+            const allowedMethods = router.getAllowedMethods(request.path);
+
+            if (allowedMethods.includes(requestedMethod)) {
+                response.headers["Access-Control-Allow-Methods"] =
+                    requestedMethod;
+            }
+        }
+    }
+
+    return response;
+};
+
+router.use(cors);
 
 router.get("/cookie", (request) => {
     const sessionId = request.cookies.sessionId;
@@ -372,12 +418,45 @@ router.get("/download/:filename", (request) => {
     );
 });
 
-router.options("/users", () => {
-    const methods = router.getAllowedMethods("/users");
+router.delete("/users/:id", (request) => {
+    const id = request.params.id;
 
-    return new HTTPResponse(204, {
-        Allow: methods.join(", "),
-    });
+    return new HTTPResponse(
+        200,
+        {
+            "Content-Type": "text/plain",
+            "Content-Length": Buffer.byteLength(
+                `User ${id} deleted`,
+            ).toString(),
+        },
+        `User ${id} deleted`,
+    );
+});
+
+router.put("/users/:id", (request) => {
+    const body = request.body;
+
+    return new HTTPResponse(
+        200,
+        {
+            "Content-Type": "text/plain",
+            "Content-Length": Buffer.byteLength(body).toString(),
+        },
+        body,
+    );
+});
+
+router.patch("/users/:id", (request) => {
+    const body = request.body;
+
+    return new HTTPResponse(
+        200,
+        {
+            "Content-Type": "text/plain",
+            "Content-Length": Buffer.byteLength(body).toString(),
+        },
+        body,
+    );
 });
 
 export function handleRequest(request: HTTPRequest): HTTPResponse {
