@@ -139,9 +139,19 @@ export async function writeGzipResponse(
         const chunkHeader = `${size}\r\n`;
         const chunkFooter = "\r\n";
 
-        socket.write(chunkHeader);
-        socket.write(chunk);
-        socket.write(chunkFooter);
+        const framedChunk = Buffer.concat([
+            Buffer.from(chunkHeader),
+            chunk,
+            Buffer.from(chunkFooter),
+        ]);
+
+        const canContinue = socket.write(framedChunk);
+
+        if (!canContinue) {
+            await new Promise<void>((resolve) => {
+                socket.once("drain", resolve);
+            });
+        }
     }
     socket.write("0\r\n\r\n");
 }

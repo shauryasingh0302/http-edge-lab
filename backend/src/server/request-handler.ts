@@ -153,17 +153,30 @@ router.get("/static/:filename", (request) => {
 
     const range = request.headers["range"];
 
-    const supportsGzip =
-        acceptEncoding?.split(",").some((encoding) => {
+    const encodings =
+        acceptEncoding?.split(",").map((encoding) => {
             const parts = encoding.trim().split(";");
+
             const name = parts[0];
 
             const q = parts.find((part) => part.trim().startsWith("q="));
 
             const quality = q ? Number(q.split("=")[1]) : 1;
 
-            return name === "gzip" && quality > 0;
-        }) ?? false;
+            return { name, quality };
+        }) ?? [];
+
+    const gzipEncoding = encodings.find((encoding) => encoding.name === "gzip");
+
+    const wildcardEncoding = encodings.find(
+        (encoding) => encoding.name === "*",
+    );
+
+    const supportsGzip = gzipEncoding
+        ? gzipEncoding.quality > 0
+        : wildcardEncoding
+          ? wildcardEncoding.quality > 0
+          : false;
 
     const shouldGzip =
         supportsGzip &&
@@ -283,6 +296,7 @@ router.get("/static/:filename", (request) => {
                   }),
             ETag: etag,
             "Last-Modified": lastModified,
+            "Cache-Control": "public, max-age=3600",
             ...(shouldGzip
                 ? {
                       "Content-Encoding": "gzip",
@@ -299,6 +313,71 @@ router.get("/static/:filename", (request) => {
         undefined,
         stream,
     );
+});
+
+router.get("/download/:filename", (request) => {
+    const filename = decodeURIComponent(request.params.filename);
+    if (filename.includes("\r") || filename.includes("\n")) {
+        return new HTTPResponse(
+            400,
+            {
+                "Content-Type": "text/plain",
+            },
+            "Invalid filename",
+        );
+    }
+    const publicDir = path.resolve("public");
+    const filePath = path.resolve(publicDir, filename);
+
+    const relativePath = path.relative(publicDir, filePath);
+
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+        return new HTTPResponse(
+            403,
+            {
+                "Content-Type": "text/plain",
+            },
+            "Forbidden",
+        );
+    }
+
+    let fileSize: number;
+
+    try {
+        const fileStats = statSync(filePath);
+        fileSize = fileStats.size;
+    } catch {
+        return new HTTPResponse(
+            404,
+            {
+                "Content-Type": "text/plain",
+            },
+            "Not Found",
+        );
+    }
+
+    const fileStream = createReadStream(filePath);
+
+    return new HTTPResponse(
+        200,
+        {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": fileSize.toString(),
+            "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+        undefined,
+        false,
+        undefined,
+        fileStream,
+    );
+});
+
+router.options("/users", () => {
+    const methods = router.getAllowedMethods("/users");
+
+    return new HTTPResponse(204, {
+        Allow: methods.join(", "),
+    });
 });
 
 export function handleRequest(request: HTTPRequest): HTTPResponse {

@@ -26,6 +26,10 @@ export class Router {
         this.routes.set(`POST ${path}`, handler);
     }
 
+    options(path: string, handler: Handler) {
+        this.routes.set(`OPTIONS ${path}`, handler);
+    }
+
     private matchRoute(
         routePath: string,
         requestPath: string,
@@ -55,7 +59,6 @@ export class Router {
     }
 
     handle(request: HTTPRequest): HTTPResponse {
-
         let handler: Handler | undefined;
 
         for (const [key, routeHandler] of this.routes) {
@@ -96,4 +99,19 @@ export class Router {
 
         return next();
     }
+
+    getAllowedMethods(path: string): string[] {
+        const methods: string[] = [];
+
+        for (const key of this.routes.keys()) {
+            const [method, routePath] = key.split(" ");
+
+            if (routePath === path) {
+                methods.push(method);
+            }
+        }
+
+        return methods;
+    }
+    
 }
