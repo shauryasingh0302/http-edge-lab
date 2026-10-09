@@ -5,9 +5,14 @@
     const concurrency =
         process.argv[3] === undefined ? 10 : Number(process.argv[3]);
 
+    const runCount =
+        process.argv[4] === undefined ? 1 : Number(process.argv[4]);
+
     if (
         !Number.isInteger(totalRequests) ||
         !Number.isInteger(concurrency) ||
+        !Number.isInteger(runCount) ||
+        runCount <= 0 ||
         totalRequests <= 0 ||
         concurrency <= 0
     ) {
@@ -17,88 +22,121 @@
         process.exit(1);
     }
 
-    const batchStart = performance.now();
+    const targetUrl = "http://localhost:8080/users?name=Shaurya";
 
-    const latencies: number[] = [];
+    const warmupCount = Math.min(concurrency, totalRequests);
 
-    let failedRequests = 0;
+    const warmupResults = await Promise.allSettled(
+        Array.from({ length: warmupCount }, async () => {
+            const response = await fetch(targetUrl);
 
-    for (let i = 0; i < totalRequests; i += concurrency) {
-        const requests: Promise<number>[] = [];
+            if (!response.ok) {
+                throw new Error(`Warm-up request failed: ${response.status}`);
+            }
 
-        const batchSize = Math.min(concurrency, totalRequests - i);
+            await response.text();
+        }),
+    );
 
-        for (let j = 0; j < batchSize; j++) {
-            const request = (async () => {
-                const start = performance.now();
+    const warmupFailures = warmupResults.filter(
+        (result) => result.status === "rejected",
+    ).length;
 
-                const response = await fetch(
-                    "http://localhost:8080/users?name=Shaurya",
-                );
+    console.log(`Warm-up requests: ${warmupCount}`);
+    console.log(`Warm-up failures: ${warmupFailures}`);
 
-                if (!response.ok) {
-                    throw new Error(`Request failed: ${response.status}`);
+    const runThroughputs: number[] = [];
+
+    for (let run = 1; run <= runCount; run++) {
+        const batchStart = performance.now();
+
+        const latencies: number[] = [];
+        let failedRequests = 0;
+
+        for (let i = 0; i < totalRequests; i += concurrency) {
+            const requests: Promise<number>[] = [];
+
+            const batchSize = Math.min(concurrency, totalRequests - i);
+
+            for (let j = 0; j < batchSize; j++) {
+                const request = (async () => {
+                    const start = performance.now();
+
+                    const response = await fetch(targetUrl);
+
+                    if (!response.ok) {
+                        throw new Error(`Request failed: ${response.status}`);
+                    }
+
+                    await response.text();
+
+                    return performance.now() - start;
+                })();
+
+                requests.push(request);
+            }
+
+            const batchLatencies = await Promise.allSettled(requests);
+
+            for (const result of batchLatencies) {
+                if (result.status === "fulfilled") {
+                    latencies.push(result.value);
+                } else {
+                    failedRequests++;
                 }
-
-                const end = performance.now();
-
-                return end - start;
-            })();
-
-            requests.push(request);
-        }
-
-        const batchLatencies = await Promise.allSettled(requests);
-
-        for (const result of batchLatencies) {
-            if (result.status === "fulfilled") {
-                latencies.push(result.value);
-            } else {
-                failedRequests++;
             }
         }
-    }
 
-    const batchEnd = performance.now();
-    const batchTime = batchEnd - batchStart;
+        const batchTime = performance.now() - batchStart;
+        const successfulRequests = latencies.length;
+        const successRate = (successfulRequests / totalRequests) * 100;
+        const rps = successfulRequests / (batchTime / 1000);
 
-    console.log(`Requests: ${totalRequests}`);
-    console.log(`Concurrency: ${concurrency}`);
-    console.log(`Failed requests: ${failedRequests}`);
+        runThroughputs.push(rps);
 
-    const successRate =
-        ((totalRequests - failedRequests) / totalRequests) * 100;
+        console.log(`\n--- Run ${run}/${runCount} ---`);
+        console.log(`Requests: ${totalRequests}`);
+        console.log(`Concurrency: ${concurrency}`);
+        console.log(`Batch time: ${batchTime.toFixed(2)} ms`);
+        console.log(`Requests/sec: ${rps.toFixed(2)}`);
+        console.log(`Successful requests: ${successfulRequests}`);
+        console.log(`Failed requests: ${failedRequests}`);
+        console.log(`Success rate: ${successRate.toFixed(2)}%`);
 
-    const rps = (totalRequests - failedRequests) / (batchTime / 1000);
+        if (latencies.length === 0) {
+            console.log(
+                "No successful requests; latency statistics unavailable.",
+            );
+            continue;
+        }
 
-    console.log(`Batch time: ${batchTime.toFixed(2)} ms`);
-    console.log(`Requests/sec: ${rps.toFixed(2)}`);
-
-    if (latencies.length === 0) {
-        console.log("No successful requests; latency statistics unavailable.");
-    } else {
-        const total = latencies.reduce((sum, latency) => sum + latency, 0);
-        const average = total / latencies.length;
+        const totalLatency = latencies.reduce(
+            (sum, latency) => sum + latency,
+            0,
+        );
+        const average = totalLatency / latencies.length;
 
         latencies.sort((a, b) => a - b);
 
+        const p50Index = Math.ceil(0.5 * latencies.length) - 1;
         const p95Index = Math.ceil(0.95 * latencies.length) - 1;
-        const p95Latency = latencies[p95Index];
-
         const p99Index = Math.ceil(0.99 * latencies.length) - 1;
-        const p99Latency = latencies[p99Index];
-
-        const minLatency = Math.min(...latencies);
-        const maxLatency = Math.max(...latencies);
 
         console.log(`Average latency: ${average.toFixed(2)} ms`);
-        console.log(`Minimum latency: ${minLatency.toFixed(2)} ms`);
-        console.log(`Maximum latency: ${maxLatency.toFixed(2)} ms`);
-        console.log(`P95 latency: ${p95Latency.toFixed(2)} ms`);
-        console.log(`P99 latency: ${p99Latency.toFixed(2)} ms`);
+        console.log(`Minimum latency: ${latencies[0].toFixed(2)} ms`);
+        console.log(
+            `Maximum latency: ${latencies[latencies.length - 1].toFixed(2)} ms`,
+        );
+        console.log(`P50 latency: ${latencies[p50Index].toFixed(2)} ms`);
+        console.log(`P95 latency: ${latencies[p95Index].toFixed(2)} ms`);
+        console.log(`P99 latency: ${latencies[p99Index].toFixed(2)} ms`);
     }
 
-    console.log(`Successful requests: ${totalRequests - failedRequests}`);
-    console.log(`Failed requests: ${failedRequests}`);
-    console.log(`Success rate: ${successRate.toFixed(2)}%`);
+    const averageThroughput =
+        runThroughputs.reduce((sum, throughput) => sum + throughput, 0) /
+        runThroughputs.length;
+
+    console.log(
+        `\nAverage throughput across ${runCount} runs: ${averageThroughput.toFixed(2)} requests/sec`,
+    );
 })();

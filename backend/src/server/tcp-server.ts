@@ -21,12 +21,13 @@ const handleConnection = (socket: net.Socket) => {
     socket.setTimeout(30_000);
 
     let buffer = "";
-
     let requestQueue = Promise.resolve();
+    let closeRequested = false;
 
     const processRequest = async (rawRequest: string) => {
         try {
             const request = parseRequest(rawRequest);
+
             const shouldClose =
                 request.headers["connection"]?.toLowerCase() === "close";
             console.log(request);
@@ -61,6 +62,9 @@ const handleConnection = (socket: net.Socket) => {
     };
 
     socket.on("data", async (data) => {
+        if (closeRequested) {
+            return;
+        }
         buffer += data.toString();
 
         while (true) {
@@ -88,7 +92,21 @@ const handleConnection = (socket: net.Socket) => {
 
             buffer = buffer.slice(requestLength);
 
+            const connectionHeaderMatch = header.match(
+                /(?:^|\r\n)Connection:\s*([^\r\n]+)/i,
+            );
+
+            const shouldClose =
+                connectionHeaderMatch?.[1].trim().toLowerCase() === "close";
+
             requestQueue = requestQueue.then(() => processRequest(rawRequest));
+
+            if (shouldClose) {
+                closeRequested = true;
+                buffer = "";
+                break;
+            }
+
         }
     });
 
