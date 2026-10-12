@@ -68,7 +68,7 @@ const cors: Middleware = (request, next) => {
         response.headers["Access-Control-Allow-Origin"] = origin;
         response.headers["Access-Control-Allow-Credentials"] = "true";
         response.headers["Vary"] = "Origin";
-        
+
         if (requestedMethod) {
             const allowedMethods = router.getAllowedMethods(request.path);
 
@@ -231,7 +231,7 @@ router.get("/static/:filename", (request) => {
         contentType.startsWith("text/");
 
     let fileSize: number;
-    let etag;
+    let etag: string;
     let lastModified;
 
     try {
@@ -243,16 +243,22 @@ router.get("/static/:filename", (request) => {
 
         const ifModifiedSince = request.headers["if-modified-since"];
 
-        if (ifModifiedSince === lastModified) {
+        if (
+            ifNoneMatch === "*" ||
+            ifNoneMatch
+                ?.split(",")
+                .some((candidate) => candidate.trim() === etag)
+        ) {
             return new HTTPResponse(304, {
                 ETag: etag,
                 "Last-Modified": lastModified,
             });
         }
 
-        if (ifNoneMatch === etag) {
+        if (ifNoneMatch === undefined && ifModifiedSince === lastModified) {
             return new HTTPResponse(304, {
                 ETag: etag,
+                "Last-Modified": lastModified,
             });
         }
     } catch {

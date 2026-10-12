@@ -11,9 +11,21 @@ function encodeChunk(body: string): string {
 export function serializeResponse(response: HTTPResponse): string {
     const statusMessage = STATUS_CODES[response.statusCode] ?? "Unknown";
     let responseText = `HTTP/1.1 ${response.statusCode} ${statusMessage}\r\n`;
+
     if (response.chunked) {
         response.headers["Transfer-Encoding"] = "chunked";
+    } else if (response.statusCode !== 204 && response.statusCode !== 304) {
+        const hasContentLength = Object.keys(response.headers).some(
+            (key) => key.toLowerCase() === "content-length",
+        );
+
+        if (!hasContentLength) {
+            response.headers["Content-Length"] = Buffer.byteLength(
+                response.body ?? "",
+            ).toString();
+        }
     }
+
     for (const [key, value] of Object.entries(response.headers)) {
         if (Array.isArray(value)) {
             for (const item of value) {

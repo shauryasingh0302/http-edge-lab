@@ -5,11 +5,17 @@ export function parseRequest(rawRequest: string) {
 
     const lines = head.split("\r\n");
 
-    const [method, path, version] = lines[0].split(" ");
+    const requestLine = lines[0];
 
-    if (!method || !path || !version) {
+    const requestLineMatch = requestLine.match(
+        /^([A-Z]+) ([^\s]+) (HTTP\/1\.[01])$/,
+    );
+
+    if (!requestLineMatch) {
         throw new Error("Malformed request line");
     }
+
+    const [, method, path, version] = requestLineMatch;
 
     const headers: Record<string, string> = {};
     const [rawPathname] = path.split("?");

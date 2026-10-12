@@ -50,14 +50,20 @@ const handleConnection = (socket: net.Socket) => {
                 socket.end();
             }
         } catch {
+            if (socket.destroyed || !socket.writable) {
+                return;
+            }
+
             const response = new HTTPResponse(
                 400,
                 {
                     "Content-Type": "text/plain",
+                    Connection: "close",
                 },
                 "Bad Request",
             );
-            socket.write(serializeResponse(response));
+
+            socket.end(serializeResponse(response));
         }
     };
 
@@ -106,12 +112,15 @@ const handleConnection = (socket: net.Socket) => {
                 buffer = "";
                 break;
             }
-
         }
     });
 
     socket.on("close", () => {
         console.log("TCP connection closed");
+    });
+
+    socket.on("error", (error) => {
+        console.log("Socket error:", error.message);
     });
 
     socket.on("timeout", () => {

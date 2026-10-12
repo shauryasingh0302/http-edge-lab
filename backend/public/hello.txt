@@ -1,2 +1,3 @@
 Hello from HTTP Edge Lab!
 This file is being streamed from our raw HTTP server.
+Now the file has been changed.
