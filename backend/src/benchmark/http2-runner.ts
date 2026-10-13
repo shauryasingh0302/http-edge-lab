@@ -8,19 +8,23 @@ function makeRequest(
         const start = performance.now();
         const request = client.request({ ":path": path });
 
-        request.on("response", (headers) => {
-            const status = Number(headers[":status"]);
+        let statusCode = 0;
 
-            if (status < 200 || status >= 300) {
-                reject(new Error(`Request failed: ${status}`));
-                request.close();
-            }
+        request.on("response", (headers) => {
+            statusCode = Number(headers[":status"]);
         });
 
         request.on("error", reject);
 
         request.on("end", () => {
-            resolve(performance.now() - start);
+            const latency = performance.now() - start;
+
+            if (statusCode < 200 || statusCode >= 300) {
+                reject(new Error(`Request failed: ${statusCode}`));
+                return;
+            }
+
+            resolve(latency);
         });
 
         request.resume();
@@ -149,6 +153,21 @@ function makeRequest(
         runThroughputs.reduce((sum, throughput) => sum + throughput, 0) /
         runThroughputs.length;
 
+    const sortedThroughputs = [...runThroughputs].sort((a, b) => a - b);
+
+    const middleIndex = Math.floor(sortedThroughputs.length / 2);
+
+    const medianThroughput =
+        sortedThroughputs.length % 2 === 0
+            ? (sortedThroughputs[middleIndex - 1] +
+                  sortedThroughputs[middleIndex]) /
+              2
+            : sortedThroughputs[middleIndex];
+
+    console.log(
+        `Median throughput across ${runCount} runs: ${medianThroughput.toFixed(2)} requests/sec`,
+    );
+    
     console.log(
         `\nAverage throughput across ${runCount} runs: ${averageThroughput.toFixed(2)} requests/sec`,
     );

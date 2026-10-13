@@ -16,8 +16,19 @@ const tlsOptions = {
     cert: readFileSync("certs/cert.pem"),
 };
 
+let connectionCount = 0;
+let activeConnections = 0;
+let nextConnectionId = 0;
+
 const handleConnection = (socket: net.Socket) => {
-    console.log("client connected");
+    connectionCount++;
+    activeConnections++;
+    const connectionId = ++nextConnectionId;
+
+    console.log(
+        `Client connected. ID: ${connectionId}, Total: ${connectionCount}, Active: ${activeConnections}`,
+    );
+
     socket.setTimeout(30_000);
 
     let buffer = "";
@@ -30,6 +41,7 @@ const handleConnection = (socket: net.Socket) => {
 
             const shouldClose =
                 request.headers["connection"]?.toLowerCase() === "close";
+            console.log(`[Connection ${connectionId}] Incoming request`);
             console.log(request);
             const response = handleRequest(request);
             response.headers["Connection"] = shouldClose
@@ -116,7 +128,11 @@ const handleConnection = (socket: net.Socket) => {
     });
 
     socket.on("close", () => {
-        console.log("TCP connection closed");
+        activeConnections--;
+
+        console.log(
+            `[Connection ${connectionId}] TCP connection closed. Active connections: ${activeConnections}`,
+        );
     });
 
     socket.on("error", (error) => {
