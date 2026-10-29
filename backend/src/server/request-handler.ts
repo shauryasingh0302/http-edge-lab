@@ -5,6 +5,11 @@ import { Middleware } from "../router/router.js";
 import { createReadStream, statSync } from "node:fs";
 import path from "node:path";
 import { createGzip } from "node:zlib";
+import {
+    getCachedResponse,
+    setCachedResponse,
+    clearResponseCache,
+} from "../cache/response-cache.js";
 
 const mimeTypes: Record<string, string> = {
     ".html": "text/html",
@@ -42,7 +47,7 @@ router.use(timer);
 const cors: Middleware = (request, next) => {
     const response = next();
 
-    const allowedOrigins = ["http://localhost:3000"];
+    const allowedOrigins = ["http://localhost:3000", "http://localhost:4000"];
 
     const origin = request.headers["origin"];
 
@@ -83,6 +88,69 @@ const cors: Middleware = (request, next) => {
 };
 
 router.use(cors);
+
+const responseCache: Middleware = (request, next) => {
+    if (request.method !== "GET") {
+        const response = next();
+
+        if (
+            ["POST", "PUT", "PATCH", "DELETE"].includes(request.method) &&
+            response.statusCode >= 200 &&
+            response.statusCode < 300
+        ) {
+            console.log("Clearing response cache:", response.statusCode);
+            clearResponseCache();
+        }
+
+        return response;
+    }
+
+    const key = createCacheKey(request);
+    const cached = getCachedResponse(key);
+
+    if (cached) {
+        console.log("Cache HIT:", key);
+        return cached;
+    }
+
+    console.log("Cache MISS:", key);
+
+    const response = next();
+
+    if (response.statusCode === 200) {
+        const hasSetCookie =
+            response.headers["Set-Cookie"] !== undefined ||
+            response.headers["set-cookie"] !== undefined;
+
+        const cacheControl =
+            response.headers["Cache-Control"] ??
+            response.headers["cache-control"];
+
+        if (
+            typeof response.body === "string" &&
+            !response.stream &&
+            !response.chunked &&
+            !hasSetCookie
+        ) {
+            const forbiddenDirectives = ["no-store", "private", "no-cache"];
+
+            const canCache = !forbiddenDirectives.some((directive) =>
+                String(cacheControl ?? "")
+                    .toLowerCase()
+                    .split(",")
+                    .some((value) => value.trim().split("=")[0] === directive),
+            );
+
+            if (canCache) {
+                setCachedResponse(key, response);
+            }
+        }
+    }
+
+    return response;
+};
+
+router.use(responseCache);
 
 router.get("/cookie", (request) => {
     const sessionId = request.cookies.sessionId;
@@ -255,7 +323,13 @@ router.get("/static/:filename", (request) => {
             });
         }
 
-        if (ifNoneMatch === undefined && ifModifiedSince === lastModified) {
+        if (
+            ifNoneMatch === undefined &&
+            ifModifiedSince !== undefined &&
+            !Number.isNaN(Date.parse(ifModifiedSince)) &&
+            Math.floor(Date.parse(lastModified) / 1000) <=
+                Math.floor(Date.parse(ifModifiedSince) / 1000)
+        ) {
             return new HTTPResponse(304, {
                 ETag: etag,
                 "Last-Modified": lastModified,
@@ -464,6 +538,18 @@ router.patch("/users/:id", (request) => {
         body,
     );
 });
+
+function createCacheKey(request: HTTPRequest): string {
+    const sortedQuery = Object.fromEntries(
+        Object.entries(request.query).sort(([a], [b]) => a.localeCompare(b)),
+    );
+
+    const queryString = new URLSearchParams(sortedQuery).toString();
+
+    return queryString
+        ? `${request.method} ${request.path}?${queryString}`
+        : `${request.method} ${request.path}`;
+}
 
 export function handleRequest(request: HTTPRequest): HTTPResponse {
     return router.handle(request);
